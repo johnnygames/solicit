@@ -36,8 +36,6 @@ impl Flag for PushPromiseFlag {
 pub struct PromisedStream {
     /// The ID of the stream that a particular stream depends on
     pub stream_id: StreamId,
-    /// A reserved bit
-    pub reserved: // ???
 }
 
 impl PromisedStream {
@@ -45,7 +43,6 @@ impl PromisedStream {
     pub fn new(stream_id: StreamId) -> PromisedStream {
         PromisedStream {
             stream_id: stream_id,
-            reserved: 0 // what do i put here?
         }
     }
 
@@ -67,7 +64,6 @@ impl PromisedStream {
 
         PromisedStream {
             stream_id: stream_id,
-            reserved: 0, // ???
         }
     }
 
@@ -86,37 +82,41 @@ impl PromisedStream {
     /// ```
     ///
     /// Where "E" is set if the dependency is exclusive.
-    pub fn serialize(&self) -> [u8; 5] {
-        let e_bit = if self.is_exclusive {
-            1 << 7
-        } else {
-            0
-        };
+    pub fn serialize(&self) -> [u8; 4] {
         [
-            (((self.stream_id >> 24) & 0x000000FF) as u8) | e_bit,
+            (((self.stream_id >> 24) & 0x000000FF) as u8) | 0,
             (((self.stream_id >> 16) & 0x000000FF) as u8),
             (((self.stream_id >>  8) & 0x000000FF) as u8),
             (((self.stream_id >>  0) & 0x000000FF) as u8),
-            self.weight,
         ]
     }
 }
 
 pub struct PushPromiseFrame {
-    pub promised_stream_id: StreamId,
+    pub promised_stream_id: Option<PromisedStream>,
     pub header_fragment: Vec<u8>,
     pub padding_len: Option<u8>,
-    pub stream_id: StreamId,
     flags: u8,
 }
 
 impl PushPromiseFrame {
-    pub fn new (fragment: Vec<u8>, stream_id: StreamId, promised_stream_id: StreamId) -> PushPromiseFrame {
+    pub fn new (fragment: Vec<u8>) -> PushPromiseFrame {
         PushPromiseFrame {
-            promised_stream_id: promised_stream_id,
             header_fragment: fragment,
+            promised_stream_id: None,
             padding_len: None,
-            stream_id: stream_id,
+            flags: 0,
+        }
+    }
+
+    pub fn with_promise(
+            fragment: Vec<u8>,
+            stream_id: StreamId,
+            promised_stream_id: PromisedStream) -> PushPromiseFrame {
+        PushPromiseFrame {
+            header_fragment: fragment,
+            promised_stream_id: Some(promised_stream_id),
+            padding_len: None,
             flags: 0,
         }
     }
@@ -143,7 +143,7 @@ impl PushPromiseFrame {
         } else {
             0
         };
-        self.header_fragment.len() as u32 + padding
+        self.header_fragment.len() as u32 + padding + 4
     }
 }
 
@@ -191,9 +191,13 @@ impl Frame for PushPromiseFrame {
             (&raw_frame.payload[..], None)
         };
 
+        let (data, promised_stream_id) = {
+            (&actual[5..], Some(PromisedStream::parse(&actual[5..])))
+        }
+
         Some(PushPromiseFrame {
             header_fragment: data.to_vec(),
-            stream_id: stream_id,
+            promised_stream_id: promised_stream_id,
             padding_len: pad_len,
             flags: flags,
         })
@@ -207,14 +211,14 @@ impl Frame for PushPromiseFrame {
     /// Returns the `StreamId` of the stream to which the frame is associated.
     ///
     /// A `SettingsFrame` always has to be associated to stream `0`.
-    fn get_stream_id(&self) -> StreamId {
-        self.stream_id
-    }
+    // fn get_stream_id(&self) -> StreamId {
+    //     self.stream_id
+    // }
 
     /// Returns a `FrameHeader` based on the current state of the `Frame`.
-    fn get_header(&self) -> FrameHeader {
-        (self.payload_len(), 0x1, self.flags, self.stream_id)
-    }
+    // fn get_header(&self) -> FrameHeader {
+    //     (self.payload_len(), 0x1, self.flags, self.stream_id)
+    // }
 
     /// Sets the given flag for the frame.
     fn set_flag(&mut self, flag: PushPromiseFlag) {
@@ -237,13 +241,11 @@ impl Frame for PushPromiseFrame {
             buf.push(self.padding_len.unwrap_or(0));
         }
         // The stream dependency fields follow, if the priority flag is set
-        if self.is_set(PushPromiseFlag::Priority) {
-            let dep_buf = match self.stream_dep {
-                Some(ref dep) => dep.serialize(),
-                None => panic!("Priority flag set, but no dependency information given"),
-            };
-            buf.extend(dep_buf.to_vec().into_iter());
-        }
+        let promise_buf = match self.promised_stream_id {
+            Some(ref promise) => promise.serialize(),
+            None => panic!("No promised stream info!"),
+        };
+        buf.extend(promise_buf.to_vec().into_iter());
         // Now the actual headers fragment
         buf.extend(self.header_fragment.clone().into_iter());
         // Finally, add the trailing padding, if required
