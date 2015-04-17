@@ -35,3 +35,40 @@ pub struct PushPromiseFrame {
     pub stream_id: StreamId,
     flags: u8,
 }
+
+impl PushPromiseFrame {
+    pub fn new (fragment: Vec<u8>, stream_id: StreamId, promised_stream_id: StreamId) -> PushPromiseFrame {
+        PushPromiseFrame {
+            promised_stream_id: promised_stream_id,
+            header_fragment: fragment,
+            padding_len: None,
+            stream_id: StreamId,
+            flags: 0,
+        }
+    }
+
+    /// Returns whether this frame ends the headers. If not, there MUST be a
+    /// number of follow up CONTINUATION frames that send the rest of the
+    /// header data.
+    pub fn is_headers_end(&self) -> bool {
+        self.is_set(PushPromiseFlag::EndHeaders)
+    }
+
+    /// Sets the padding length for the frame, as well as the corresponding
+    /// Padded flag.
+    pub fn set_padding(&mut self, padding_len: u8) {
+        self.padding_len = Some(padding_len);
+        self.set_flag(PushPromiseFlag::Padded);
+    }
+
+    /// Returns the length of the payload of the current frame, including any
+    /// possible padding in the number of bytes.
+    fn payload_len(&self) -> u32 {
+        let padding = if self.is_set(PushPromiseFlag::Padded) {
+            1 + self.padding_len.unwrap_or(0) as u32
+        } else {
+            0
+        };
+        self.header_fragment.len() as u32 + padding
+    }
+}
