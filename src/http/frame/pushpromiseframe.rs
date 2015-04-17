@@ -28,6 +28,80 @@ impl Flag for PushPromiseFlag {
     }
 }
 
+/// The struct represents the dependency information that can be attached to
+/// a stream and sent within a PUSH_PROMISE frame.
+#[derive(PartialEq)]
+#[derive(Debug)]
+#[derive(Clone)]
+pub struct PromisedStream {
+    /// The ID of the stream that a particular stream depends on
+    pub stream_id: StreamId,
+    /// A reserved bit
+    pub reserved: // ???
+}
+
+impl PromisedStream {
+    /// Creates a new `PromisedStream` with the given stream ID and reserved bit
+    pub fn new(stream_id: StreamId) -> PromisedStream {
+        PromisedStream {
+            stream_id: stream_id,
+            reserved: 0 // what do i put here?
+        }
+    }
+
+    /// Parses the first 5 bytes in the buffer as a `PromisedStream`.
+    /// (Each 5-byte sequence is always decodable into a stream dependency
+    /// structure).
+    ///
+    /// # Panics
+    ///
+    /// If the given buffer has less than 5 elements, the method will panic.
+    pub fn parse(buf: &[u8]) -> PromisedStream {
+        let stream_id = {
+            // Parse the first 4 bytes into a u32...
+            let mut id = unpack_octets_4!(buf, 0, u32);
+            // ...clear the first bit since the stream id is only 31 bits.
+            id &= !(1 << 31);
+            id
+        };
+
+        PromisedStream {
+            stream_id: stream_id,
+            reserved: 0, // ???
+        }
+    }
+
+    /// Serializes the `StreamDependency` into a 5-byte buffer representing the
+    /// dependency description, as described in section 6.2. of the HTTP/2
+    /// spec:
+    ///
+    /// ```notest
+    ///  0                   1                   2                   3
+    ///  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+    /// +-+-------------+-----------------------------------------------+
+    /// |E|                 Stream Dependency  (31)                     |
+    /// +-+-------------+-----------------------------------------------+
+    /// |  Weight  (8)  |
+    /// +-+-------------+-----------------------------------------------+
+    /// ```
+    ///
+    /// Where "E" is set if the dependency is exclusive.
+    pub fn serialize(&self) -> [u8; 5] {
+        let e_bit = if self.is_exclusive {
+            1 << 7
+        } else {
+            0
+        };
+        [
+            (((self.stream_id >> 24) & 0x000000FF) as u8) | e_bit,
+            (((self.stream_id >> 16) & 0x000000FF) as u8),
+            (((self.stream_id >>  8) & 0x000000FF) as u8),
+            (((self.stream_id >>  0) & 0x000000FF) as u8),
+            self.weight,
+        ]
+    }
+}
+
 pub struct PushPromiseFrame {
     pub promised_stream_id: StreamId,
     pub header_fragment: Vec<u8>,
@@ -42,7 +116,7 @@ impl PushPromiseFrame {
             promised_stream_id: promised_stream_id,
             header_fragment: fragment,
             padding_len: None,
-            stream_id: StreamId,
+            stream_id: stream_id,
             flags: 0,
         }
     }
@@ -117,19 +191,9 @@ impl Frame for PushPromiseFrame {
             (&raw_frame.payload[..], None)
         };
 
-        // From the actual payload we extract the stream dependency info, if
-        // the appropriate flag is set.
-        let priority = (flags & PushPromiseFlag::Priority.bitmask()) != 0;
-        let (data, stream_dep) = if priority {
-            (&actual[5..], Some(StreamDependency::parse(&actual[..5])))
-        } else {
-            (actual, None)
-        };
-
-        Some(HeadersFrame {
+        Some(PushPromiseFrame {
             header_fragment: data.to_vec(),
             stream_id: stream_id,
-            stream_dep: stream_dep,
             padding_len: pad_len,
             flags: flags,
         })
