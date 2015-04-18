@@ -294,7 +294,78 @@ mod tests {
         assert_eq!(frame.padding_len.unwrap(), 6);
     }
 
-    
+    /// Tests that a stream dependency structure can be correctly parsed by the
+    /// `StreamDependency::parse` method.
+    #[test]
+    fn test_parse_promised_stream() {
+        {
+            let buf = [0, 0, 0, 1];
+
+            let dep = PromisedStream::parse(&buf);
+
+            assert_eq!(dep.stream_id, 1);
+        }
+        {
+            let buf = [0, 0, 1, 5];
+
+            let dep = PromisedStream::parse(&buf);
+
+            assert_eq!(dep.stream_id, unpack_octets_4!(buf, 0, u32));
+        }
+    //     {
+    //         // Most significant bit set => is exclusive!
+    //         let buf = [255, 255, 255, 5];
+
+    //         let dep = PromisedStream::parse(&buf);
+
+    //         assert_eq!(dep.stream_id, (1 << 31) - 1);
+    //         assert_eq!(dep.weight, 5);
+    //         // This one was indeed exclusive!
+    //         assert!(dep.is_exclusive);
+    //     }
+    //     {
+    //         let buf = [255, 255, 255, 5];
+
+    //         let dep = PromisedStream::parse(&buf);
+
+    //         assert_eq!(dep.stream_id, (1 << 31) - 1);
+    //         assert_eq!(dep.weight, 5);
+    //         // This one was not exclusive!
+    //         assert!(!dep.is_exclusive);
+    //     }
+    }
+
+    // /// Tests that a stream dependency structure can be correctly serialized by
+    // /// the `PromisedStream::serialize` method.
+    // #[test]
+    // fn test_serialize_stream_dependency() {
+    //     {
+    //         let buf = [0, 0, 0, 1, 5];
+    //         let dep = PromisedStream::new(1, 5, false);
+
+    //         assert_eq!(buf, dep.serialize());
+    //     }
+    //     {
+    //         // Most significant bit set => is exclusive!
+    //         let buf = [128, 0, 0, 1, 5];
+    //         let dep = PromisedStream::new(1, 5, true);
+
+    //         assert_eq!(buf, dep.serialize());
+    //     }
+    //     {
+    //         // Most significant bit set => is exclusive!
+    //         let buf = [255, 255, 255, 255, 5];
+    //         let dep = PromisedStream::new((1 << 31) - 1, 5, true);
+
+    //         assert_eq!(buf, dep.serialize());
+    //     }
+    //     {
+    //         let buf = [127, 255, 255, 255, 5];
+    //         let dep = PromisedStream::new((1 << 31) - 1, 5, false);
+
+    //         assert_eq!(buf, dep.serialize());
+    //     }
+    // }
 
 
 
