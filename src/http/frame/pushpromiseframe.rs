@@ -172,6 +172,7 @@ impl Frame for PushPromiseFrame {
         // Check that the length given in the header matches the payload
         // length; if not, something went wrong and we do not consider this a
         // valid frame.
+        println!("{:?} raw_frame.payload, {:?} len as usize", raw_frame.payload.len(), len as usize);
         if (len as usize) != raw_frame.payload.len() {
             return None;
         }
@@ -193,7 +194,7 @@ impl Frame for PushPromiseFrame {
         };
 
         let (data, promised_stream_id) = {
-            (&actual[5..], Some(PromisedStream::parse(&actual[5..])))
+            (&actual[4..], Some(PromisedStream::parse(&actual[..4])))
         };
 
         Some(PushPromiseFrame {
@@ -212,14 +213,14 @@ impl Frame for PushPromiseFrame {
     /// Returns the `StreamId` of the stream to which the frame is associated.
     ///
     /// A `SettingsFrame` always has to be associated to stream `0`.
-    // fn get_stream_id(&self) -> StreamId {
-    //     self.stream_id
-    // }
+    fn get_stream_id(&self) -> StreamId {
+        0
+    }
 
     /// Returns a `FrameHeader` based on the current state of the `Frame`.
-    // fn get_header(&self) -> FrameHeader {
-    //     (self.payload_len(), 0x1, self.flags, self.stream_id)
-    // }
+    fn get_header(&self) -> FrameHeader {
+        (self.payload_len(), 0x5, self.flags, 0)
+    }
 
     /// Sets the given flag for the frame.
     fn set_flag(&mut self, flag: PushPromiseFlag) {
@@ -268,20 +269,32 @@ mod tests {
     /// not contain any padding nor priority information.
     #[test]
     fn test_push_frame_parse_simple() {
-        let data = b"0";
+        let data = b"1234";
         let payload = data.to_vec();
         let header = (payload.len() as u32, 0x5, 0, 1);
 
         let frame = build_test_frame::<PushPromiseFrame>(&header, &payload);
 
-        assert_eq!(frame.header_fragment, data);
+        assert_eq!(frame.header_fragment, []);
         assert_eq!(frame.flags, 0);
-        assert!(frame.promised_stream_id.is_none());
         assert!(frame.padding_len.is_none());
     }
 
+    /// Tests that a HEADERS frame with padding is correctly parsed.
+    #[test]
+    fn test_headers_frame_parse_with_padding() {
+        let data = b"1234567";
+        let payload = build_padded_frame_payload(data, 6);
+        let header = (payload.len() as u32, 0x5, 0x08, 1);
 
+        let frame = build_test_frame::<PushPromiseFrame>(&header, &payload);
 
+        assert_eq!(frame.flags, 8);
+        assert_eq!(frame.get_stream_id(), 0);
+        assert_eq!(frame.padding_len.unwrap(), 6);
+    }
+
+    
 
 
 
