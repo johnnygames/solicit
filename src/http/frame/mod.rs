@@ -51,6 +51,11 @@ pub use self::rststreamframe::{
     ErrorFlag,
     RstStreamFrame,
 };
+pub use self::pushpromiseframe::{
+    PushPromiseFlag,
+    PushPromiseFrame,
+    PromisedStream,
+};
 
 pub mod frames;
 mod test;
@@ -59,3 +64,4 @@ pub mod settingsframe;
 pub mod headersframe;
 pub mod pingframe;
 pub mod rststreamframe;
+pub mod pushpromiseframe;

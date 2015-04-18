@@ -5,6 +5,7 @@ use super::frames::{
     RawFrame,
     FrameHeader,
     pack_header,
+    parse_padded_payload,
 };
 
 /// An enum representing the flags that a `PushPromiseFrame` can have.
@@ -193,7 +194,7 @@ impl Frame for PushPromiseFrame {
 
         let (data, promised_stream_id) = {
             (&actual[5..], Some(PromisedStream::parse(&actual[5..])))
-        }
+        };
 
         Some(PushPromiseFrame {
             header_fragment: data.to_vec(),
@@ -255,4 +256,33 @@ impl Frame for PushPromiseFrame {
 
         buf
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::super::frames::{Frame, RawFrame, pack_header};
+    use super::super::test::{build_test_frame, build_padded_frame_payload};
+    use super::{PushPromiseFrame, PushPromiseFlag, PromisedStream};
+
+    /// Tests that a simple HEADERS frame is correctly parsed. The frame does
+    /// not contain any padding nor priority information.
+    #[test]
+    fn test_push_frame_parse_simple() {
+        let data = b"0";
+        let payload = data.to_vec();
+        let header = (payload.len() as u32, 0x5, 0, 1);
+
+        let frame = build_test_frame::<PushPromiseFrame>(&header, &payload);
+
+        assert_eq!(frame.header_fragment, data);
+        assert_eq!(frame.flags, 0);
+        assert!(frame.promised_stream_id.is_none());
+        assert!(frame.padding_len.is_none());
+    }
+
+
+
+
+
+
 }
