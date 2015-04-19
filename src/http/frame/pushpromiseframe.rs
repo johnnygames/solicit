@@ -112,7 +112,6 @@ impl PushPromiseFrame {
 
     pub fn with_promise(
             fragment: Vec<u8>,
-            stream_id: StreamId,
             promised_stream_id: PromisedStream) -> PushPromiseFrame {
         PushPromiseFrame {
             header_fragment: fragment,
@@ -324,5 +323,30 @@ mod tests {
 
             assert_eq!(buf, dep.serialize());
         }
+    }
+
+    /// Tests that a simple HEADERS frame (no padding, no priority) gets
+    /// correctly serialized.
+    #[test]
+    fn test_push_promise_frame_serialize_simple() {
+        let mut payload: Vec<u8> = Vec::new();
+        let data = b"1234567";
+        let promise = [0, 0, 0, 1];
+        payload.extend(promise.to_vec().into_iter());
+        payload.extend(data.to_vec());
+        let header = (payload.len() as u32, 0x5, 0, 0);
+        let expected = {
+            let headers = pack_header(&header);
+            let mut res: Vec<u8> = Vec::new();
+            res.extend(headers.to_vec().into_iter());
+            res.extend(payload.into_iter());
+
+            res
+        };
+        let newpromise = PromisedStream::new(1);
+        let frame = PushPromiseFrame::with_promise(data.to_vec(), newpromise);
+        let actual = frame.serialize();
+
+        assert_eq!(expected, actual);
     }
 }
