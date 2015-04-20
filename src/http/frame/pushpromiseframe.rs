@@ -171,7 +171,6 @@ impl Frame for PushPromiseFrame {
         // Check that the length given in the header matches the payload
         // length; if not, something went wrong and we do not consider this a
         // valid frame.
-        println!("{:?} raw_frame.payload, {:?} len as usize", raw_frame.payload.len(), len as usize);
         if (len as usize) != raw_frame.payload.len() {
             return None;
         }
