@@ -30,30 +30,27 @@ impl Flag for PushPromiseFlag {
 }
 
 /// The struct represents the dependency information that can be attached to
-/// a stream and sent within a PUSH_PROMISE frame.
+/// a stream and sent within a 'PushPromiseFrame'.
 #[derive(PartialEq)]
 #[derive(Debug)]
 #[derive(Clone)]
 pub struct PromisedStream {
-    /// The ID of the stream that a particular stream depends on
+    /// The ID of the stream that will be promised
     pub stream_id: StreamId,
 }
 
 impl PromisedStream {
-    /// Creates a new `PromisedStream` with the given stream ID and reserved bit
+    /// Creates a new `PromisedStream` with the given streamId
     pub fn new(stream_id: StreamId) -> PromisedStream {
         PromisedStream {
             stream_id: stream_id,
         }
     }
 
-    /// Parses the first 5 bytes in the buffer as a `PromisedStream`.
-    /// (Each 5-byte sequence is always decodable into a stream dependency
+    /// Parses the first 4 bytes in the buffer as a `PromisedStream`.
+    /// (Each 4-byte sequence is always decodable into a promised stream
     /// structure).
     ///
-    /// # Panics
-    ///
-    /// If the given buffer has less than 5 elements, the method will panic.
     pub fn parse(buf: &[u8]) -> PromisedStream {
         let stream_id = {
             // Parse the first 4 bytes into a u32...
@@ -68,21 +65,20 @@ impl PromisedStream {
         }
     }
 
-    /// Serializes the `StreamDependency` into a 5-byte buffer representing the
-    /// dependency description, as described in section 6.2. of the HTTP/2
+    /// Serializes the `PromisedStream` into a 4-byte buffer representing the
+    /// promised stream description, as described in section 6.6. of the HTTP/2
     /// spec:
     ///
     /// ```notest
     ///  0                   1                   2                   3
     ///  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
     /// +-+-------------+-----------------------------------------------+
-    /// |E|                 Stream Dependency  (31)                     |
+    /// |R|                 Promised Stream ID  (31)                    |
     /// +-+-------------+-----------------------------------------------+
-    /// |  Weight  (8)  |
+    /// |  Header Fragment  (*)  |
     /// +-+-------------+-----------------------------------------------+
     /// ```
     ///
-    /// Where "E" is set if the dependency is exclusive.
     pub fn serialize(&self) -> [u8; 4] {
         [
             (((self.stream_id >> 24) & 0x000000FF) as u8) | 0,
@@ -143,6 +139,7 @@ impl PushPromiseFrame {
         } else {
             0
         };
+        // The header fragment and the 4 octect PromisedStream stream_id combined
         self.header_fragment.len() as u32 + padding + 4
     }
 }
@@ -190,7 +187,10 @@ impl Frame for PushPromiseFrame {
         } else {
             (&raw_frame.payload[..], None)
         };
-
+        // Here is where we parse the header_fragment from the PromisedStream
+        // The Promised Stream always comes in first according the the diagrams
+        // laid out in the spec as a u32, unpacked into 4 octets
+        // Thus the header_fragment is all the data after the first 4 u8s
         let (data, promised_stream_id) = {
             (&actual[4..], Some(PromisedStream::parse(&actual[..4])))
         };
@@ -210,7 +210,7 @@ impl Frame for PushPromiseFrame {
 
     /// Returns the `StreamId` of the stream to which the frame is associated.
     ///
-    /// A `SettingsFrame` always has to be associated to stream `0`.
+    /// A `PushPromiseFrame` does not declar a stream_id so return '0'.
     fn get_stream_id(&self) -> StreamId {
         0
     }
@@ -229,8 +229,7 @@ impl Frame for PushPromiseFrame {
     ///
     /// # Panics
     ///
-    /// If the `PushPromiseFlag::Priority` flag was set, but no stream dependency
-    /// information is given (i.e. `stream_dep` is `None`).
+    /// If there is no 'PromisedStream' information
     fn serialize(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(self.payload_len() as usize);
         // First the header...
@@ -263,8 +262,8 @@ mod tests {
     use super::super::test::{build_test_frame, build_padded_frame_payload};
     use super::{PushPromiseFrame, PushPromiseFlag, PromisedStream};
 
-    /// Tests that a simple HEADERS frame is correctly parsed. The frame does
-    /// not contain any padding nor priority information.
+    /// Tests that a simple PP frame is correctly parsed. The frame does
+    /// not contain any padding information.
     #[test]
     fn test_push_frame_parse_simple() {
         let data = b"1234";
@@ -278,7 +277,7 @@ mod tests {
         assert!(frame.padding_len.is_none());
     }
 
-    /// Tests that a HEADERS frame with padding is correctly parsed.
+    /// Tests that a PP frame with padding is correctly parsed.
     #[test]
     fn test_headers_frame_parse_with_padding() {
         let data = b"1234567";
@@ -292,8 +291,8 @@ mod tests {
         assert_eq!(frame.padding_len.unwrap(), 6);
     }
 
-    /// Tests that a stream dependency structure can be correctly parsed by the
-    /// `StreamDependency::parse` method.
+    /// Tests that a promised stream structure can be correctly parsed by the
+    /// `PromisedStream::parse` method.
     #[test]
     fn test_parse_promised_stream() {
         {
@@ -312,7 +311,7 @@ mod tests {
         }
     }
 
-    /// Tests that a stream dependency structure can be correctly serialized by
+    /// Tests that a promised stream structure can be correctly serialized by
     /// the `PromisedStream::serialize` method.
     #[test]
     fn test_serialize_promised_stream() {
@@ -324,7 +323,7 @@ mod tests {
         }
     }
 
-    /// Tests that a simple HEADERS frame (no padding, no priority) gets
+    /// Tests that a simple PP frame (no padding) gets
     /// correctly serialized.
     #[test]
     fn test_push_promise_frame_serialize_simple() {
