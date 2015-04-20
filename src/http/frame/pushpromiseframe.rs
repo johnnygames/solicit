@@ -258,9 +258,9 @@ impl Frame for PushPromiseFrame {
 
 #[cfg(test)]
 mod tests {
-    use super::super::frames::{Frame, RawFrame, pack_header};
+    use super::super::frames::{Frame, pack_header};
     use super::super::test::{build_test_frame, build_padded_frame_payload};
-    use super::{PushPromiseFrame, PushPromiseFlag, PromisedStream};
+    use super::{PushPromiseFrame, PromisedStream};
 
     /// Tests that a simple PP frame is correctly parsed. The frame does
     /// not contain any padding information.
